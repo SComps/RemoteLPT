@@ -6,7 +6,9 @@ Setting up an OpenVMS print queue for RemoteLPT
 Make sure your Alpha emulator is set up to have a second serial port to listen to a TCP Telnet port.  See your documentation on this.  
 For for AXPBOX, I've been using port 9110 but it can be anything.  In FreeAXP or EmuVM, these can be configured in much the same way 
 using the GUI configuration tool.  RemoteLPT will ignore any banners that are sent, only settling down after 5 seconds of silence from 
-the emulator.
+the emulator.  If your emulator allows it, and you're running this project on the same machine as the emulator, you can set the startup
+application for the second console port to the full path to the RemoteLPT application.  This will start the printer when the emulator
+starts.
 
 Log into Open VMS as with SYSTEM privileges.
 
@@ -43,3 +45,7 @@ $ DEFINE /SYSTEM $PRINTER TTA0:
 $ SET PRINTER /NOWRAP /NOTRUNCATE /CR $PRINTER
 $ SET TERMINAL $PRINTER/PERMANENT/page=66/width=135/device_type=la120
 $ SET DEVICE /SPOOLED=(SYS$PRINT, SYS$SYSDEVICE:) $PRINTER
+
+I am SO not a VMS expert.  If anyone has a better (or even correct) way of doing this, please let me know.
+All I can say at this point, is that it currently works for me.
+
