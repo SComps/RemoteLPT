@@ -3,7 +3,10 @@
 Setting up an OpenVMS print queue for RemoteLPT
 
 *** BEFORE YOU DO THIS ***
-Make sure your Alpha emulator is set up to have a second serial port to listen to a TCP Telnet port.  See your documentation on this.  For for AXPBOX, I've been using port 9110 but it can be anything.  In FreeAXP or EmuVM, these can be configured in much the same way using the GUI configuration tool.  RemoteLPT will ignore any banners that are sent, only settling down after 5 seconds of silence from the emulator.
+Make sure your Alpha emulator is set up to have a second serial port to listen to a TCP Telnet port.  See your documentation on this.  
+For for AXPBOX, I've been using port 9110 but it can be anything.  In FreeAXP or EmuVM, these can be configured in much the same way 
+using the GUI configuration tool.  RemoteLPT will ignore any banners that are sent, only settling down after 5 seconds of silence from 
+the emulator.
 
 Log into Open VMS as with SYSTEM privileges.
 
@@ -14,7 +17,10 @@ START/QUEUE/MANAGER/NEW
 
 Define the DEFAULT form
 DEFINE/FORM /MARGIN=(TOP=0,BOTTOM=0) DEFAULT 0
-This will create a default form with no top or bottom margin.  If you want to turn on flag pages, you can with this command.  HELP DEFINE FORM will show you how to do this.  Make sure you have the form properly defined BEFORE you create the SYS$PRINT print queue.  If you change it later, delete the SYS$PRINT queue and re-create it with the commands below.
+
+This will create a default form with no top or bottom margin.  If you want to turn on flag pages, you can with this command.  HELP DEFINE FORM 
+will show you how to do this.  Make sure you have the form properly defined BEFORE you create the SYS$PRINT print queue.  If you change it 
+later, delete the SYS$PRINT queue and re-create it with the commands below.
 
 Set up the SYS$PRINT queue
 If you already have one, you can delete it with
