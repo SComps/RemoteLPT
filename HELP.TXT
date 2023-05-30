@@ -35,7 +35,10 @@ This will establish the SYS$PRINT queue as an autostart queue pointing towards T
 Start RemoteLPT and set up the connection parameters, then click the START button.  If all goes well, it'll connect to your emulator, and settle.
 
 SET DEF SYS$STARTUP
-PRINT SYSTARTUP_VMS.COM
+PRINT WELCOME.TXT
+
+
+
 You should see...
 Job WELCOME (queue SYS$PRINT, entry 158) started on SYS$PRINTPRINT WELCOME.TXT
 If everything is configured properly, the welcome.txt should be printed on your windows printer.
