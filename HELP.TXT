@@ -42,9 +42,17 @@ If everything is configured properly, the welcome.txt should be printed on your 
 
 My SYSTARTUP_VMS.COM has these lines
 $ DEFINE /SYSTEM $PRINTER TTA0:
-$ SET PRINTER /NOWRAP /NOTRUNCATE /CR $PRINTER
 $ SET TERMINAL $PRINTER/PERMANENT/page=66/width=135/device_type=la120
 $ SET DEVICE /SPOOLED=(SYS$PRINT, SYS$SYSDEVICE:) $PRINTER
+
+VMS can be a bit finicky in my experience.  You may have a better solution, and unless you're experienced with DCL
+error handling, any error in SYSTARTUP_VMS.COM will terminate the processing.  Anything after that won't happen
+which is usually TCP/IP networking, and any language processing etc.  Sometimes judicious 
+
+$ WRITE SYS$OUTPUT "Short description of what's happening"
+
+immediately before the command will give you a hint as where any problems are occurring.  Mind you, messing around
+with SYSTARTUP_VMS.COM is on you.  If you manage to get your system to not start, don't blame me.
 
 I am SO not a VMS expert.  If anyone has a better (or even correct) way of doing this, please let me know.
 All I can say at this point, is that it currently works for me.
