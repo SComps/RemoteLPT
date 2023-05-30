@@ -16,8 +16,8 @@ Public Class PrintHelper
         Form1.LogBox.AppendText(String.Format("Using {0}/{1} on printer {2}" & vbCrLf, FontFamily, FontSize, DestinationPrinter))
         Dim prn As New Printing.PrintDocument
         prn.PrintController = New System.Drawing.Printing.StandardPrintController
-        Try
-            Using (prn)
+
+        Using (prn)
                 prn.PrinterSettings.PrinterName = DestinationPrinter
                 prn.DefaultPageSettings.Landscape = True
                 prn.DefaultPageSettings.Margins.Top = 0
@@ -102,13 +102,11 @@ Public Class PrintHelper
                 prn.Print()
                 RemoveHandler prn.PrintPage, AddressOf Me.PrintPageHandler
             End Using
-        Catch ex As Exception
-            MsgBox(ex.ToString)
-        End Try
+
     End Sub
 
     Private Sub PrintPageHandler(ByVal Sender As Object, ByVal args As Printing.PrintPageEventArgs)
-        Form1.LogBox.AppendText("Entering PageHandler")
+
         Dim thisPage As String
         Static PageNumber As Integer
         Dim myFont As New Font(FontFamily, FontSize)

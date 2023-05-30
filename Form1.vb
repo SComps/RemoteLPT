@@ -232,7 +232,7 @@ Public Class Form1
 
     Private Sub SpoolJob(job As List(Of String))
         Dim ph As New PrintHelper
-        Dim docname As String = String.Format("{0}\{1}_{2}" & vbCrLf, PDFPath, myRemoteHost.Replace(".", "-"), Now.Ticks)
+        Dim docname As String = String.Format("{0}\{1}_{2}", PDFPath, myRemoteHost.Replace(".", "-"), Now.Ticks)
         Me.LogBox.AppendText(docname)
         LogBox.AppendText("Set output file to " & docname & vbCrLf)
         ph.DestinationPrinter = SelectedPrinter
