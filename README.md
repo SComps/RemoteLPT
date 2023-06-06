@@ -1,4 +1,10 @@
 # RemoteLPT
+
+6/6/23 
+Added some support for flat output files like those uses in Simh.  The features aren't complete
+yet, but it's starting to come together.
+
+Initial commit.
 If you were previously watching the repository, I had to delete and re-create it.
 
 Remote LPT is a windows application that allows printing from emulators such as AXPBOX, FreeAXP and EmuVM.
