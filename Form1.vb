@@ -1,20 +1,28 @@
 ﻿' *** REMOTELPT/Scott Johnson westdalefarmer@gmail.com
 
 
-Imports System.Configuration
-Imports System.Data.Common
-Imports System.Diagnostics.SymbolStore
 Imports System.Drawing.Printing
-Imports System.Net.Configuration
-Imports System.Net.Security
-Imports System.Security
-Imports System.Security.Permissions
-Imports System.Threading
 Imports Microsoft.Win32
 Imports nsoftware.IPWorks
+Imports System.IO
+Imports System.Runtime.InteropServices
+Imports System.Net.Http
+Imports System.Threading
+Imports Microsoft.SqlServer.Server
+Imports System.Runtime.InteropServices.ComTypes
+Imports Microsoft.VisualBasic.Logging
 
 Public Class Form1
 
+    Enum Source
+        REMTELNET = 1
+        REMFLATFILE = 2
+    End Enum
+
+
+
+
+    Dim Initialized As Boolean = False
     Dim myRemoteHost As String = ""
     Dim myRemotePort As String = ""
     Dim Settled As Boolean = False
@@ -22,19 +30,26 @@ Public Class Form1
     Dim LastData As DateTime = #00:00#
     Dim CollectingDocument As Boolean = False
     Dim myDocument As New List(Of String)
-    Public WithEvents pd As New PrintDocument
-    Public DefaultPrinter As String = pd.PrinterSettings.PrinterName
-    Public DefaultPage As PageSettings = pd.DefaultPageSettings
-    Public DefaultSettings As PrinterSettings = pd.PrinterSettings
-    Public FontList As List(Of String)
-    Public DefaultFontFamily As String = "Consolas"
-    Public DefaultFontSize As Single = 7.15
-    Public SelectedPrinter As String
-    Public SelectedFontFamily As String
-    Public SelectedFontSize As Single
-    Public DocumentBuffer As String = ""
-    Public regKey As RegistryKey = My.Computer.Registry.CurrentUser.OpenSubKey("Software\RemoteLPT", True)
-    Public PDFPath As String = System.Environment.CurrentDirectory
+    Dim WithEvents pd As New PrintDocument
+    Dim DefaultPrinter As String = pd.PrinterSettings.PrinterName
+    Dim DefaultPage As PageSettings = pd.DefaultPageSettings
+    Dim DefaultSettings As PrinterSettings = pd.PrinterSettings
+    Dim FontList As List(Of String)
+    Dim DefaultFontFamily As String = "Consolas"
+    Dim DefaultFontSize As Single = 7.15
+    Dim SelectedPrinter As String
+    Dim SelectedFontFamily As String
+    Dim SelectedFontSize As Single
+    Dim DocumentBuffer As String = ""
+    Dim regKey As RegistryKey = My.Computer.Registry.CurrentUser.OpenSubKey("Software\RemoteLPT", True)
+    Dim PDFPath As String = System.Environment.CurrentDirectory
+    Dim SourceType As Integer = 1
+    Dim FlatFile As String = ""
+    Dim FlatFileHighWater As ULong = 0
+    Dim InStream As StreamReader
+    Dim lastMaxOffset As Long
+    Dim fileSettle As Boolean
+
 
     Sub LoadRegistry()
         If regKey Is Nothing Then
@@ -50,6 +65,9 @@ Public Class Form1
         Dim regShowData As Boolean = regKey.GetValue("Show_Data", True)
         Dim regUpperOnly As Boolean = regKey.GetValue("Upper_Only", False)
         Dim regPDFPath As String = regKey.GetValue("PDF_Path", System.Environment.CurrentDirectory)
+        Dim regSourceType As Integer = regKey.GetValue("SourceType", 1)
+        Dim regFlatFilename As String = regKey.GetValue("FlatFilename", "")
+        Dim regIgnoreExisting As Boolean = regKey.GetValue("FileIgnoreExisting", True)
 
         If regRemoteHost <> "" Then myRemoteHost = regRemoteHost
 
@@ -63,6 +81,9 @@ Public Class Form1
 
         If regLinesPage <> 0 Then txtLinesPage.Text = regLinesPage
 
+        If regFlatFilename <> "" Then
+            txtFlatFile.Text = regFlatFilename
+        End If
         If regPDFPath <> "" Then
             PDFPath = regPDFPath
             LogBox.AppendText(String.Format("Setting document storage directory to: {0}" & vbCrLf, PDFPath))
@@ -73,6 +94,10 @@ Public Class Form1
         UpperOnly.Checked = regUpperOnly
 
         retryConnect.Checked = regReconnect
+
+        SourceType = regSourceType
+
+        chkIgnoreExisting.Checked = regIgnoreExisting
 
     End Sub
     Private Sub Form1_Load(sender As Object, e As EventArgs) Handles MyBase.Load
@@ -108,18 +133,50 @@ Public Class Form1
             FontItem += 1
         Next
         txtFontSize.Text = DefaultFontSize
-        If myRemoteHost = "" Then
-            LogBox.AppendText("Remote host not defined, Assuming 192.168.1.24." & vbCrLf)
-            myRemoteHost = "192.168.1.24"
+
+        If SourceType = Source.REMTELNET Then
+            optRemoteTelnet.Checked = True
+            If myRemoteHost = "" Then
+                LogBox.AppendText("Remote host not defined, Assuming 192.168.1.24." & vbCrLf)
+                myRemoteHost = "192.168.1.24"
+            End If
+            If myRemotePort = "" Then
+                LogBox.AppendText("Remote port not defined.  Assuming 9110" & vbCrLf)
+                myRemotePort = 9110
+            End If
         End If
-        If myRemotePort = "" Then
-            LogBox.AppendText("Remote port not defined.  Assuming 9110" & vbCrLf)
-            myRemotePort = 9110
+        If SourceType = Source.REMFLATFILE Then
+            optFlatFile.Checked = True
+            If FlatFile = "" Then
+                LogBox.AppendText("No remote printer file defined." & vbCrLf)
+            Else
+                ' Process the input file.
+                ' See if it exists
+                Dim IExist As Boolean = CheckFile(FlatFile)
+                If Not IExist Then
+                    LogBox.AppendText("Remote printer file does not exist." & vbCrLf)
+                    LogBox.AppendText("No printing will take place.  Make sure your emulator" & vbCrLf)
+                    LogBox.AppendText("creates the file, then restart this application." & vbCrLf)
+                Else
+                    InStream = New StreamReader(New FileStream(FlatFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                    If chkIgnoreExisting.Checked Then
+                        lastMaxOffset = InStream.BaseStream.Length
+                        LogBox.AppendText(String.Format("Not printing existing {0} bytes of data." & vbCrLf, lastMaxOffset))
+                    End If
+                End If
+            End If
         End If
-        txtRemoteHost.Text = myRemoteHost
-        txtRemotePort.Text = myRemotePort
-        connTimer.Stop()
-        retryTimer.Start()
+        If SourceType = Source.REMTELNET Then
+            txtRemoteHost.Text = myRemoteHost
+            txtRemotePort.Text = myRemotePort
+            connTimer.Stop()
+            retryTimer.Start()
+        Else
+            bufferTimer.Start()
+            connTimer.Start()
+            retryTimer.Stop()
+        End If
+        Initialized = True
     End Sub
 
     Private Sub Button1_Click(sender As Object, e As EventArgs) Handles btnRemote.Click
@@ -194,34 +251,70 @@ Public Class Form1
 
     Private Sub connTimer_Tick(sender As Object, e As EventArgs) Handles connTimer.Tick
         connTimer.Stop()
-        RemPort.DoEvents()
-        If RemPort.Connected = True Then
-            Dim Elapsed As TimeSpan = Now.Subtract(ConnectedAt)
-            Dim SettleTime As TimeSpan = Now.Subtract(LastData)
-            If Settled = True Then
-                If CollectingDocument = True Then
-                    If SettleTime.Seconds > 2 Then
-                        ' We've heard nothing from the remote for 5 seconds.
-                        CollectingDocument = False
-                        LogBox.AppendText("Document ready to print." & vbCrLf)
-                        myDocument = SplitBuffer()
-                        Dim outDoc As List(Of String) = SeparateLines(myDocument)
+        If SourceType = Source.REMTELNET Then
+            RemPort.DoEvents()
+            If RemPort.Connected = True Then
+                Dim Elapsed As TimeSpan = Now.Subtract(ConnectedAt)
+                Dim SettleTime As TimeSpan = Now.Subtract(LastData)
+                If Settled = True Then
+                    If CollectingDocument = True Then
+                        If SettleTime.Seconds > 2 Then
+                            ' We've heard nothing from the remote for 5 seconds.
+                            CollectingDocument = False
+                            LogBox.AppendText("Document ready to print." & vbCrLf)
+                            myDocument = SplitBuffer()
+                            Dim outDoc As List(Of String) = SeparateLines(myDocument)
 
-                        SpoolJob(outDoc)
+                            SpoolJob(outDoc)
+                        End If
                     End If
                 End If
-            End If
-            If (SettleTime.Seconds > 5) And (Not Settled) Then      ' Once connected 2 seconds should be fine, 5 initial
-                Settled = True
-                LogBox.AppendText("Connection Settled." & vbCrLf)
-            End If
+                If (SettleTime.Seconds > 5) And (Not Settled) Then      ' Once connected 2 seconds should be fine, 5 initial
+                    Settled = True
+                    LogBox.AppendText("Connection Settled." & vbCrLf)
+                End If
 
-            Dim stat As String = "Connected {0} days, {1} hours, {2} minutes, {3} seconds."
-            connStatus.Text = String.Format(stat, Elapsed.Days, Elapsed.Hours, Elapsed.Minutes, Elapsed.Seconds)
-        Else
-            connStatus.Text = "Not connected."
+                Dim stat As String = "Connected {0} days, {1} hours, {2} minutes, {3} seconds."
+                connStatus.Text = String.Format(stat, Elapsed.Days, Elapsed.Hours, Elapsed.Minutes, Elapsed.Seconds)
+            Else
+                connStatus.Text = "Not connected."
+            End If
         End If
 
+        If SourceType = Source.REMFLATFILE Then
+            Dim currentLength As Long = InStream.BaseStream.Length
+            If fileSettle Then
+                If currentLength > lastMaxOffset Then
+                    connStatus.Text = "Collecting document."
+                    LogBox.AppendText("New data waiting in output file." & vbCrLf)
+                    Dim Reading As Boolean = True
+                    Dim thisLine As String = ""
+                    InStream.BaseStream.Seek(lastMaxOffset, SeekOrigin.Begin)
+                    CollectingDocument = True
+
+                    While (InStream.Peek() >= 0)
+                        thisLine = InStream.ReadLine()
+                        DocumentBuffer = DocumentBuffer & thisLine & vbCrLf
+                        LogBox.AppendText(thisLine & vbCrLf)
+                    End While
+                    lastMaxOffset = InStream.BaseStream.Position
+                    LastData = Now
+                Else
+                    connStatus.Text = ("Max offset is current." & vbCrLf)
+                End If
+
+                CollectingDocument = False
+                LogBox.AppendText("Document ready to print." & vbCrLf)
+                myDocument = SplitBuffer()
+                Dim outDoc As List(Of String) = SeparateLines(myDocument)
+                DocumentBuffer = ""
+                myDocument.Clear()
+                SpoolJob(outDoc)
+                outDoc.Clear()
+                CollectingDocument = False
+                fileSettle = False
+            End If
+        End If
         connTimer.Start()
     End Sub
 
@@ -232,7 +325,12 @@ Public Class Form1
 
     Private Sub SpoolJob(job As List(Of String))
         Dim ph As New PrintHelper
-        Dim docname As String = String.Format("{0}\{1}_{2}", PDFPath, myRemoteHost.Replace(".", "-"), Now.Ticks)
+        Dim docname As String
+        If SourceType = Source.REMTELNET Then
+            docname = String.Format("{0}\{1}_{2}", PDFPath, myRemoteHost.Replace(".", "-"), Now.Ticks)
+        Else
+            docname = String.Format("{0}\{1}_{2}", PDFPath, "FILE_PRINTER", Now.Ticks)
+        End If
         Me.LogBox.AppendText(docname)
         LogBox.AppendText("Set output file to " & docname & vbCrLf)
         ph.DestinationPrinter = SelectedPrinter
@@ -380,6 +478,85 @@ Public Class Form1
             regKey.SetValue("PDF_Path", PDFPath)
         End If
 
+    End Sub
+
+    Private Function CheckFile(FName As String) As Boolean
+        Return File.Exists(FName)
+    End Function
+
+    Private Sub optRemoteTelnet_CheckedChanged(sender As Object, e As EventArgs) Handles optRemoteTelnet.CheckedChanged
+        If Not Initialized Then Exit Sub
+
+        If optRemoteTelnet.Checked Then
+            SourceType = Source.REMTELNET
+            LogBox.AppendText("Selecting Remote Telnet connection." & vbCrLf)
+        Else
+            SourceType = Source.REMFLATFILE
+        End If
+        regKey.SetValue("SourceType", SourceType)
+    End Sub
+
+    Private Sub optFlatFile_CheckedChanged(sender As Object, e As EventArgs) Handles optFlatFile.CheckedChanged
+        If Not Initialized Then Exit Sub
+
+        If optFlatFile.Checked Then
+            SourceType = Source.REMFLATFILE
+            LogBox.AppendText("Selecting Remote flat file." & vbCrLf)
+        Else
+            SourceType = Source.REMTELNET
+        End If
+        regKey.SetValue("SourceType", SourceType)
+    End Sub
+
+    Private Sub Button1_Click_1(sender As Object, e As EventArgs) Handles Button1.Click
+        Dim resp As DialogResult
+        dlgFlatFile.AddExtension = True
+        dlgFlatFile.InitialDirectory = regKey.GetValue("FlatFileDirectory", System.Environment.CurrentDirectory)
+        dlgFlatFile.DefaultExt = ".txt"
+        dlgFlatFile.SupportMultiDottedExtensions = True
+        dlgFlatFile.Multiselect = False
+        dlgFlatFile.AutoUpgradeEnabled = True
+        dlgFlatFile.Filter = "txt files (*.txt)|*.txt|prn files (*.prn)|*.prn|output files (*.out)|*.out|All files (*.*)|*.*"
+        dlgFlatFile.FileName = txtFlatFile.Text
+        resp = dlgFlatFile.ShowDialog()
+        If resp = DialogResult.OK Then
+            txtFlatFile.Text = dlgFlatFile.FileName
+            regKey.SetValue("FlatFilename", dlgFlatFile.FileName)
+            Dim thisPath As String = dlgFlatFile.FileName.Replace(dlgFlatFile.SafeFileName, "")
+            regKey.SetValue("FlatFileDirectory", thisPath)
+        End If
+    End Sub
+
+    Private Sub txtFlatFile_TextChanged(sender As Object, e As EventArgs) Handles txtFlatFile.TextChanged
+        FlatFile = txtFlatFile.Text
+    End Sub
+
+    Private Sub chkIgnoreExisting_CheckedChanged(sender As Object, e As EventArgs) Handles chkIgnoreExisting.CheckedChanged
+        regKey.SetValue("FileIgnoreExisting", chkIgnoreExisting.Checked)
+    End Sub
+
+    Private Sub bufferTimer_Tick(sender As Object, e As EventArgs) Handles bufferTimer.Tick
+        Static BufferCount As Long
+        Static oldFileLength As Long
+        bufferTimer.Stop()
+        Dim fileLength As Long = InStream.BaseStream.Length
+        bufferLabel.Text = String.Format("{2}-{0}/{1}", fileLength, lastMaxOffset, BufferCount)
+        If fileLength > lastMaxOffset Then
+            If BufferCount = 0 Then
+                LogBox.AppendText("File length greater than last offset." & vbCrLf)
+            End If
+            If oldFileLength = fileLength Then
+                    BufferCount += 1
+                    If BufferCount > 250 Then
+                        BufferCount = 0
+                        fileSettle = True
+                    End If
+                Else
+                    BufferCount = 0
+                End If
+                oldFileLength = fileLength
+            End If
+            bufferTimer.Start()
     End Sub
 End Class
 
